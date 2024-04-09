@@ -1,0 +1,263 @@
+const groupID = __ //группа с ботом 
+
+const token = "___" //token BOT
+const ssId = "___" //https://docs.google.com/spreadsheets/d/___/edit#gid=0
+const webAppUrl = "https://script.google.com/macros/s/***/exec" //script.Liberary
+
+function setWebhook() {
+console.log (UrlFetchApp.fetch(`https://api.telegram.org/bot${token}/setWebhook?url=${webAppUrl}`).getContentText())
+}
+
+
+// Функция для получения списка участников группы
+function getChatMembers(chatId) {
+  var data = {
+    method: 'post',
+    payload: {
+      method: 'getChatAdministrators',
+      chat_id: String(chatId)
+    },
+    muteHttpExceptions: true
+  };
+  var response = UrlFetchApp.fetch('https://api.telegram.org/bot' + token + '/', data);
+  var responseData = JSON.parse(response.getContentText());
+  return responseData.result;
+}
+
+//функция для пересылки текста от имени бота
+function forwardMessage(chat_id, from_chat_id, message_id) {
+  let data = {
+    method: 'post',
+    payload: {
+      method: 'forwardMessage',
+      chat_id: String(chat_id),
+      from_chat_id: String(from_chat_id),
+      message_id: message_id
+    },
+    muteHttpExceptions: true
+  };
+  return JSON.parse(UrlFetchApp.fetch('https://api.telegram.org/bot' + token + '/', data));
+}
+
+//функция для отправки текста от имени бота
+function sendText(chat_id, text, keyBoard) {
+  let data = {
+    method: 'post',
+    payload: {
+      method: 'sendMessage',
+      chat_id: String(chat_id),
+      text: text,
+      parse_mode: 'HTML',
+      reply_markup: JSON.stringify(keyBoard),
+      link_preview_options: JSON.stringify({ is_disabled: true })
+    },
+    muteHttpExceptions: true
+  };
+  return JSON.parse(UrlFetchApp.fetch('https://api.telegram.org/bot' + token + '/', data));
+}
+
+//функция для удалений сообщений
+function deleteMassage(chat_id, message_id) {
+  let data = {
+    method: 'post',
+    payload: {
+      method: 'deleteMassage',
+      chat_id: String(chat_id),
+      message_id: message_id
+    },
+    muteHttpExceptions: true
+  };
+  return JSON.parse(UrlFetchApp.fetch('https://api.telegram.org/bot' + token + '/', data));
+}
+
+// функция ответа на кнопку
+function answerCallbackQuery(callback_query_id, text, show_alert) {
+  let data = {
+    method: "post",
+    payload: {
+      method: "answerCallbackQuery",
+      callback_query_id: callback_query_id,
+      text: text,
+      show_alert: show_alert
+    },
+    muteHttpExceptions: true //глушим ошибки
+  }
+  return JSON.parse(UrlFetchApp.fetch(`https://api.telegram.org/bot${token}/`, data))
+}
+
+//проверяем есть ли что то в кеше
+function checkCachedData() {
+  let cachedData = CacheService.getScriptCache().get("cachedData");
+  if (cachedData) {
+    Logger.log("Данные есть в кэше: " + cachedData);
+  } else {
+    Logger.log("Данных в кэше нет.");
+  }
+  let cachedLastMessages = CacheService.getScriptCache().get("cachedLastMessages");
+  if (cachedLastMessages) {
+    Logger.log("Данные есть в кэше группы: " + cachedLastMessages);
+  } else {
+    Logger.log("Данных в кэше нет.");
+  }
+}
+
+function getLastDataWithinLast10Minutes() {
+  let sheet = SpreadsheetApp.openById(ssId).getSheetByName("Group users");
+  let data = sheet.getDataRange().getDisplayValues();
+  let sent = data[10];
+  let columnValues = [];
+  let currentTime = new Date().getTime();
+  let tenMinutesAgo = currentTime - (10 * 60 * 1000);
+  let lastMessages = {};
+
+  for (let i = 0; i < data.length; i++) {
+    let rowTime = parseInt(data[i][9]);
+    if (rowTime * 1000 >= tenMinutesAgo) { 
+      columnValues.push(data[i]);
+
+      let fromChatId = data[i][5];
+      let messageId = data[i][7];
+      let username = data[i][4];
+      let title = data[i][6];
+      let text = data[i][8];
+      let fromUserId = data[i][1]
+      
+
+      if (!lastMessages[fromChatId] || lastMessages[fromChatId].messageTime < rowTime) {
+        lastMessages[fromChatId] = {
+          fromUserId: fromUserId,
+          username: username,
+          title: title,
+          messageId: messageId,
+          text: text,
+          messageTime: rowTime
+        };
+      }
+    }
+  }
+
+  // Кэшируем последние сообщения для каждой группы
+  let cachedLastMessages = JSON.stringify(lastMessages);
+  CacheService.getScriptCache().put("cachedLastMessages", cachedLastMessages, 600);
+  if (sent !== true) {
+    checkAndResendIfRequired();
+  }
+}
+
+function checkAndResendIfRequired() {
+  // Получаем кэшированные последние сообщения для каждой группы
+  let cachedLastMessages = CacheService.getScriptCache().get("cachedLastMessages");
+  let lastMessages = JSON.parse(cachedLastMessages);
+
+  // Проверяем последние сообщения для каждой группы
+  for (let chatId in lastMessages) {
+    let lastMessage = lastMessages[chatId];
+    let currentTime = new Date().getTime();
+
+    // Проверяем, было ли последнее сообщение написано более минуты назад
+    if ((currentTime - lastMessage.messageTime * 1000) > 60000) {
+      // Если сообщение было написано другим пользователем, вызываем функцию resent
+      // if (lastMessage.fromUserId != '_____') { //ID
+      if (
+        lastMessage.fromUserId != '____' //указываем ID кого исключать
+        && lastMessage.fromUserId != '___') {
+          resent([lastMessage.fromUserId, '', '', '', lastMessage.username, chatId, lastMessage.title, lastMessage.messageId, lastMessage.text]);
+      }
+    }
+  }
+}
+
+// Пересылка сообщения
+function resent(data) {
+  let message_id = data[7];
+  let chat_id = _____; //указываем чат где присылать сообщения
+  let from_chat_id = data[5];
+  let username = data[4];
+  let title = data[6];
+  let text = data[8];
+  let inviteLink = getChatLink(username)
+
+  forwardMessage(chat_id, from_chat_id, message_id);
+  sendText(chat_id, `Пользователь ${username} написал 1 минуту назад в группе <code>${title}</code> и ему никто не ответил. /nСсылка на группу/п${inviteLink}`);
+  
+  // Получаем доступ к активному листу
+  let sheet = SpreadsheetApp.openById(ssId).getSheetByName("Group users");
+  // Находим строку с соответствующим message_id и отмечаем сообщение как отправленное
+  for (let i = 1; i <= sheet.getLastRow(); i++) {
+    if (sheet.getRange(i, 8).getValue() == message_id) { // Сравниваем с message_id
+      sheet.getRange(i, 11).setValue(true); // Помечаем как отправленное в колонке K
+      break; // Прерываем цикл после первого совпадения
+    }
+  }
+}
+
+function getChatLink(chatId) {
+  var apiUrl = "https://api.telegram.org/bot" + token + "/getChat?chat_id=" + chatId;
+  var response = UrlFetchApp.fetch(apiUrl);
+  var data = JSON.parse(response.getContentText());
+  
+  if (data.ok) {
+    var chat = data.result;
+    var chatTitle = chat.title || "Chat";
+    var inviteLink = chat.invite_link || "Invite link is not available";
+    Logger.log("Title: " + chatTitle);
+    Logger.log("Invite Link: " + inviteLink);
+    return inviteLink;
+  } else {
+    Logger.log("Error: " + data.description);
+    return null;
+  }
+}
+
+
+function createInviteLink(chat_id) {
+  let data = {
+    method: 'post',
+    payload: {
+      method: 'exportChatInviteLink',
+      chat_id: String(chat_id),
+      contentType: 'application/json',
+    },
+  };
+
+  try {
+    var json = JSON.parse(UrlFetchApp.fetch('https://api.telegram.org/bot' + token + '/', data));
+    if (json.ok) {
+      return json.result; // Возвращаем ссылку на приглашение чата
+    } else {
+      Logger.log('Ошибка создания пригласительной ссылки: ' + json.description);
+      return null; // Возвращаем null в случае ошибки
+    }
+  } catch (e) {
+    Logger.log('Ошибка: ' + e.toString());
+    return null; // Возвращаем null в случае ошибки
+  }
+}
+
+function doPost(e) {
+  var contents = JSON.parse(e.postData.contents);
+
+  SpreadsheetApp.openById(ssId).getSheetByName("Debug").getRange(1, 1).setValue(JSON.stringify(contents, null, 5));
+
+  try {
+    if (contents.hasOwnProperty("message") && contents.message.hasOwnProperty("chat") && contents.message.chat.hasOwnProperty("id") && contents.message.hasOwnProperty("from") && contents.message.hasOwnProperty("message_id") && contents.message.hasOwnProperty("text")) {
+
+      var dataToPut = [new Date(), contents.message.from.id, contents.message.from.first_name, contents.message.from.last_name, `@${contents.message.from.username}`, contents.message.chat.id, contents.message.chat.title, contents.message.message_id, contents.message.text, contents.message.date]; //, JSON.stringify(contents)
+
+      SpreadsheetApp.openById(ssId).getSheetByName("Group users").appendRow(dataToPut);
+
+      getLastDataWithinLast10Minutes();
+
+  } catch (err) {
+    Logger = BetterLog.useSpreadsheet(ssId);
+    err = (typeof err === 'string') ? new Error(err) : err;
+    Logger.severe('%s: %s (line %s, file "%s"). Stack: "%s" . While processing %s.', err.name||'', err.message||'', err.lineNumber||'', err.fileName||'', err.stack||'', '');
+  }
+}
+
+
+function clearSheet() {
+  let ss = SpreadsheetApp.openById(ssId);
+  let sheet = ss.getSheetByName("Group users");
+  sheet.getRange("A2:Z" + sheet.getLastRow()).clear();
+}
